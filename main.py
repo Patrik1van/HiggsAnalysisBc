@@ -27,14 +27,14 @@ def main():
 
     # === Grid search ===
     param_grid = {
-        'batch_size': [3000, 2500, 1500],
-        'learning_rate': [3e-3, 6e-3],
+        'batch_size': [8192],
+        'learning_rate': [1e-3],
         'epochs': [100],
-        'n_layers': [2,3,4],
-        'hidden_layer_size': [1024, 512, 256],
-        'dropout_rate': [0.2],
-        'weight_decay': [1e-5],
-        "n_normalizer_samples": [20]
+        'n_layers': [10],
+        'hidden_layer_size': [8192, 16384, 4096],
+        'dropout_rate': [0.5],
+        'weight_decay': [0],
+        "n_normalizer_samples": [10000]
     }
 
     iterable = list(itertools.product(*param_grid.values()))
@@ -49,7 +49,7 @@ def main():
             f"[{i+1}/{len(iterable)}] Trénujeme s hyperparametrami:\n"
             f"  batch_size={batch_size_val}, learning_rate={learning_rate_val}, epochs={epochs_val},\n"
             f"  n_layers={n_layers_val}, hidden_layer_size={hidden_size_val},\n"
-            f"  dropout_rate={dropout_val}, weight_decay={weight_decay_val}"
+            f"  dropout_rate={dropout_val}, weight_decay={weight_decay_val}, n_normalizer_samples={n_normalizer_samples_val}"
         )
 
         model = RegressionModel(
@@ -70,21 +70,9 @@ def main():
         model.train_model()
         model.plot_history()
 
-        final_loss = model.history.history['loss'][-1]
-        logger.info(f"Final training loss: {final_loss:.6f}")
-
-        if final_loss < best_loss:
-            best_loss = final_loss
-            best_params = params
-
-    logger.info("\n=== Najlepšie hyperparametre ===")
-    logger.info(
-        f"batch_size={best_params[0]}, learning_rate={best_params[1]}, epochs={best_params[2]},\n"
-        f"n_layers={best_params[3]}, hidden_layer_size={best_params[4]},\n"
-        f"dropout_rate={best_params[5]}, weight_decay={best_params[6]}"
-    )
-    logger.info(f"Najnižšia dosažená tréningová loss: {best_loss:.6f}")
-
+        #final_loss = model.history.history['val_loss'][-1]
+        #logger.info(f"Final training loss: {final_loss:.6f}")
+        
     # Finálne echo do job.out
     print("Tréning dokončený detailné logy nájdeš v logs/train.log")
 

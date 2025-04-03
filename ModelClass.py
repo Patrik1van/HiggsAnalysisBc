@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import os
 from DatasetClass import Dataset
 from tensorflow.keras.layers import Normalization, Input, Dense, BatchNormalization, Dropout, Activation
-from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.optimizers import AdamW
 from tensorflow.keras.optimizers.schedules import CosineDecay
 from tensorflow.keras.models import Model, load_model
 from tensorflow.keras.losses import MeanSquaredError, MeanAbsolutePercentageError
@@ -21,6 +21,34 @@ if not logger.handlers:
     file_handler = logging.FileHandler("logs/train.log")
     file_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
     logger.addHandler(file_handler)
+
+class ResidualBlock(tf.keras.layers.Layer):
+    def __init__(self, units, activation="relu", dropout_rate=0.2, use_bias=False):
+        super(ResidualBlock, self).__init__()
+        self.units = units
+        self.activation = activation
+        self.dropout_rate = dropout_rate
+        self.use_bias = use_bias
+
+    def build(self, input_shape):
+        # Main path layers
+        self.dense1 = Dense(self.units, use_bias=self.use_bias)
+        self.bn1 = BatchNormalization()
+        self.activation_layer = Activation(self.activation)
+        self.dropout = Dropout(self.dropout_rate)
+        self.dense2 = Dense(input_shape[-1], use_bias=self.use_bias)
+        self.bn2 = BatchNormalization()
+
+    def call(self, inputs):
+        # Main path
+        x = self.dense1(inputs)
+        x = self.bn1(x)
+        x = self.activation_layer(x)
+        x = self.dropout(x)
+        x = self.dense2(x)
+        x = self.bn2(x)
+        
+        return x + inputs    
 
 class RegressionModel:
     def __init__(self, dataset, **kwargs):
@@ -98,10 +126,12 @@ class RegressionModel:
         layer = self.normalizer(input_layer)
 
         for i in range(self.n_layers):
-            layer = Dense(self.hidden_layer_size // self.n_layers, use_bias=False)(layer) 
-            layer = BatchNormalization()(layer) 
-            layer = Activation(self.activation_function)(layer) 
-            layer = Dropout(self.dropout_rate)(layer) 
+            layer = ResidualBlock(
+                units=self.hidden_layer_size // self.n_layers,
+                activation=self.activation_function,
+                dropout_rate=self.dropout_rate,
+                use_bias=False 
+            )(layer)
 
         output_layer = Dense(1, activation=None)(layer)
 
@@ -114,7 +144,7 @@ class RegressionModel:
         # Compile the model
         self.model = Model(inputs=input_layer, outputs=output_layer)
         self.model.compile(
-            optimizer=Adam(learning_rate=learning_rate, weight_decay=self.weight_decay),
+            optimizer = AdamW(learning_rate=learning_rate, weight_decay=self.weight_decay, clipnorm=1.0),
             loss=MeanSquaredError(),
             metrics=[MeanSquaredError(), MeanAbsolutePercentageError()]
         )
@@ -138,7 +168,7 @@ class RegressionModel:
             self.train_batch,
             epochs=self.n_epochs,
             validation_data=self.dev_batch,
-            steps_per_epoch=self.dataset.train_events // self.batch_size,
+            #steps_per_epoch=self.dataset.train_events // self.batch_size,
             callbacks=callbacks
         )
         self.history = history
