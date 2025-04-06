@@ -279,7 +279,7 @@ class DatasetMass(Dataset):
         return mask
     
     def augment_data_phi(self, n_slices=10):
-        self.make_slices(n_slices)
+        #self.make_slices(n_slices)
         phi_mask = tf.constant(self.get_phi_mask())
 
         @tf.function
@@ -291,9 +291,9 @@ class DatasetMass(Dataset):
             
             return data, target
 
-        new_dataset = tf.data.Dataset.sample_from_datasets([s.repeat() for s in self.slices], weights=[1.]*len(self.slices))
-        self.train_dataset  = new_dataset.map(augment_phi, num_parallel_calls=tf.data.AUTOTUNE).prefetch(tf.data.AUTOTUNE)
-        #self.train_dataset = self.train_dataset.map(augment_phi)
+        #new_dataset = tf.data.Dataset.sample_from_datasets([s.repeat() for s in self.slices], weights=[1.]*len(self.slices))
+        #self.train_dataset  = new_dataset.map(augment_phi, num_parallel_calls=tf.data.AUTOTUNE).prefetch(tf.data.AUTOTUNE)
+        self.train_dataset = self.train_dataset.map(augment_phi,num_parallel_calls=tf.data.AUTOTUNE).prefetch(tf.data.AUTOTUNE)
 
     def get_lorentz_mask(self):
         mask = []
@@ -312,7 +312,7 @@ class DatasetMass(Dataset):
     
     def augment_data_lorentz(self, n_slices=10):
 
-        self.make_slices(n_slices)
+        #self.make_slices(n_slices)
         lorentz_mask = tf.constant(self.get_lorentz_mask())
         lorentz_indices = tf.squeeze(tf.where(lorentz_mask), axis=1) # [0 1 2 3 4 5 6 7 13 14 ...] 
         n_vectors = tf.shape(lorentz_indices)[0] // 4 # number of 4-vectors
@@ -360,13 +360,12 @@ class DatasetMass(Dataset):
                 
             return data, target
 
-        new_dataset = tf.data.Dataset.sample_from_datasets([s.repeat() for s in self.slices], weights=[1.]*len(self.slices))
-        new_dataset = new_dataset.take(100000) #TODO self.train_events
-        augmented_dataset = new_dataset.map(augment_lorentz)
+        #new_dataset = tf.data.Dataset.sample_from_datasets([s.repeat() for s in self.slices], weights=[1.]*len(self.slices))
+        #new_dataset = new_dataset.take(100000) #TODO self.train_events
+        #augmented_dataset = new_dataset.map(augment_lorentz)
 
-        #TODO Ask Dan about concatenation of new dataset to train dataset
-        self.train_dataset = augmented_dataset
-        self.train_events = 100000
+        self.train_dataset = self.train_dataset.map(augment_lorentz,num_parallel_calls=tf.data.AUTOTUNE).prefetch(tf.data.AUTOTUNE)
+        
 
     def load_data(self, file_name = "data", n_slices=10):
         self.slice_datasets = [] 

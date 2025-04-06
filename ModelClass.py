@@ -23,8 +23,8 @@ if not logger.handlers:
     logger.addHandler(file_handler)
 
 class ResidualBlock(tf.keras.layers.Layer):
-    def __init__(self, units, activation="relu", dropout_rate=0.2, use_bias=False):
-        super(ResidualBlock, self).__init__()
+    def __init__(self, units, activation="relu", dropout_rate=0.2, use_bias=False, **kwargs):
+        super(ResidualBlock, self).__init__(**kwargs)
         self.units = units
         self.activation = activation
         self.dropout_rate = dropout_rate
@@ -71,7 +71,7 @@ class RegressionModel:
         self.weight_decay = kwargs.get('weight_decay', 1e-5)
         self.dropout_rate = kwargs.get('dropout_rate', 0.2)
     
-    def save(self):
+    def save(self, model_name="PatrikNet.keras"):
         if self.model is None:
             raise ValueError("Model has not been built yet. Call build_model() first.") 
         
@@ -81,14 +81,14 @@ class RegressionModel:
         if not os.path.exists(models_dir):
             os.makedirs(models_dir)
 
-        model_save_path = os.path.join(models_dir, "mlp_regression_model")
+        model_save_path = os.path.join(models_dir, model_name)
         self.model.save(model_save_path)
         print(f"Model saved to {model_save_path}")
 
-    def load(self):
+    def load(self, model_name="PatrikNet.keras"):
         current_dir = os.getcwd()
         models_dir = os.path.join(current_dir, "models")
-        model_load_path = os.path.join(models_dir, "mlp_regression_model")
+        model_load_path = os.path.join(models_dir,  model_name)
 
         if os.path.exists(model_load_path):
             self.model = load_model(model_load_path)
@@ -159,6 +159,7 @@ class RegressionModel:
         
         checkpointFolder = '{}/checkpoints/checkpoints/'.format(self.outFolder)
         os.makedirs(checkpointFolder, exist_ok=True)
+
         #checkpoint = tf.keras.callbacks.BackupAndRestore(backup_dir=checkpointFolder, delete_checkpoint=False, save_freq=100)
         early_stop = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=False, verbose=1, mode='min')
         tensorboard = tf.keras.callbacks.TensorBoard(log_dir='{}/logs'.format(self.outFolder), histogram_freq=10)
@@ -187,22 +188,26 @@ class RegressionModel:
             self.dataset.build_dataset()
         
         # Evaluate the model
-        evaluation_results = self.model.evaluate(self.val_batch)
+        evaluation_results = self.model.evaluate(self.dev_batch)
         print(f"Validation Loss: {evaluation_results}")
 
     def plot_history(self):
         """
-        Plot training history.
-        Args:
-            history: Training history object from model.fit().
+        Plot training history, visualizing the loss curves for both training and validation datasets.
+        The plot is saved to a file named 'loss.png'.
         """
-        plt.figure("Training Loss")
-        plt.plot(self.history.history['loss'], label='Train Loss')
-        plt.plot(self.history.history['val_loss'], label='Validation Loss')
-        plt.xlabel('Epochs')
-        plt.ylabel('Loss')
-        plt.legend()
-        plt.title("Training and Validation Loss")
+        plt.figure(figsize=(10, 6))
+        plt.plot(self.history.history['loss'], label='Training Loss', linewidth=2)
+        plt.plot(self.history.history['val_loss'], label='Validation Loss', linewidth=2)
+        plt.xlabel('Epoch', fontsize=14)
+        plt.ylabel('Loss (Mean Squared Error)', fontsize=14)
+        plt.title('Training and Validation Loss Curves', fontsize=16)
+        plt.legend(fontsize=12)
+        plt.xticks(fontsize=12)
+        plt.yticks(fontsize=12)
+        plt.tight_layout()
+        plt.savefig("loss.png")
+
 
     def plot_output_distributions(self):
         """
