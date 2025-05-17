@@ -24,12 +24,18 @@ if not logger.handlers:
 
 
 class Augmentation(Layer):
-    def __init__(self, phi_mask, lorentz_mask, augmentation, **kwargs):
+    def __init__(self, **kwargs):
+       
+        self.phi_mask = kwargs.pop("phi_mask", None)
+        self.lorentz_mask = kwargs.pop("lorentz_mask", None)
+        self.augmentation = kwargs.pop("augmentation", "phi")
         super(Augmentation, self).__init__(**kwargs)
 
-        self.phi_mask = tf.constant(phi_mask, dtype=tf.bool)
-        self.lorentz_mask = tf.constant(lorentz_mask, dtype = tf.bool)
-        self.augmentation = augmentation
+        if self.lorentz_mask is not None:
+            self.lorentz_mask = tf.constant(self.lorentz_mask, dtype = tf.bool)
+
+        if self.phi_mask is not None:
+            self.phi_mask = tf.constant(self.phi_mask, dtype = tf.bool)
 
         if self.augmentation == "lorentz":
             self.lorentz_indices_original = tf.cast(tf.where(self.lorentz_mask), dtype=tf.int32)
@@ -174,7 +180,7 @@ class RegressionModel:
         model_load_path = os.path.join(models_dir,  model_name)
 
         if os.path.exists(model_load_path):
-            self.model = load_model(model_load_path)
+            self.model = load_model(model_load_path, custom_objects={'Augmentation': Augmentation})
             print(f"Model loaded from {model_load_path}")
         else:
             raise FileNotFoundError(f"Model not found at {model_load_path}")
