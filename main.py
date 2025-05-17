@@ -22,9 +22,9 @@ def main():
     logger.info(f"Loading data from: {patrik_data}")
 
     dataset = DatasetMass()
-    dataset.load_data(file_name="data")
+    dataset.load_data(file_name="data_mmc")
     logger.info("Data loaded successfully.")
-    dataset.augment_data(n_slices = 25)
+    dataset.augment_data(n_slices = 20)
     logger.info("Data augmented successfully.")
 
     # === Grid search ===
@@ -51,7 +51,7 @@ def main():
             f"[{i+1}/{len(iterable)}] Trénujeme s hyperparametrami:\n"
             f"  batch_size={batch_size_val}, learning_rate={learning_rate_val}, epochs={epochs_val},\n"
             f"  n_layers={n_layers_val}, hidden_layer_size={hidden_size_val},\n"
-            f"  dropout_rate={dropout_val}, weight_decay={weight_decay_val}, n_normalizer_samples={n_normalizer_samples_val}, activation_function={activation_function}\n"
+            f"  dropout_rate={dropout_val}, weight_decay={weight_decay_val}, n_normalizer_samples={n_normalizer_samples_val}, activation_function={activation_function}, lorentz\n"
         )
 
         model = RegressionModel(
@@ -63,15 +63,17 @@ def main():
             hidden_layer_size=hidden_size_val,
             dropout_rate=dropout_val,
             weight_decay=weight_decay_val,
-            n_normalizer_samples = n_normalizer_samples_val
+            n_normalizer_samples = n_normalizer_samples_val,
+            augmentation_type = "lorentz"
+
         )
 
         model.prepare_dataset()
         model.create_normalizer()
         model.build_model()
         model.train_model()
-        model.save(model_name = "PatrikNet_mmc_phi_flattened_nommc.keras")
-        model.load(model_name = "PatrikNet_mmc_phi_flattened_nommc.keras")
+        model.save(model_name = "PatrikNet_mmc_phi_flattened_lorentz.keras")
+        model.load(model_name = "PatrikNet_mmc_phi_flattened_lorentz.keras")
         model.plot_history()
 
         #final_loss = model.history.history['val_loss'][-1]

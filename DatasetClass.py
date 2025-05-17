@@ -305,8 +305,7 @@ class DatasetMass(Dataset):
 
         #augmented_ds = cached_sampled_ds.map(augment_phi, num_parallel_calls=tf.data.AUTOTUNE)
         prefetched_ds = cached_sampled_ds.prefetch(tf.data.AUTOTUNE)
-        self.train_dataset = prefetched_ds   
-
+        self.train_dataset = prefetched_ds  
         
         #self.train_dataset  = new_dataset.map(augment_phi, num_parallel_calls=tf.data.AUTOTUNE).prefetch(tf.data.AUTOTUNE)
         #self.train_dataset = self.train_dataset.map(augment_phi,num_parallel_calls=tf.data.AUTOTUNE).prefetch(tf.data.AUTOTUNE)

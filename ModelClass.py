@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 from DatasetClass import Dataset
+
 from tensorflow.keras.layers import Normalization, Input, Dense, BatchNormalization, Dropout, Activation, Layer
 from tensorflow.keras.optimizers import AdamW
 from tensorflow.keras.optimizers.schedules import CosineDecay
@@ -136,6 +137,9 @@ class RegressionModel:
         self.history = None
         self.outFolder = "model_checkpoint"
         self.augmentation_type = kwargs.get("augmentation", "phi")
+        self.strategy = kwargs.get("strategy", tf.distribute.MirroredStrategy())
+        print(f"Number of devices: {self.strategy.num_replicas_in_sync}")
+
         """
         Model hyperparameters.
         """
@@ -200,6 +204,7 @@ class RegressionModel:
             n_train: Number of training samples (used for learning rate decay).
         """
         print("Building model...")
+        #with self.strategy.scope():
         input_layer = Input(shape=tuple(self.dataset.train_dataset.element_spec[0].shape.as_list()))
         layer = Augmentation(phi_mask=self.dataset.get_phi_mask(), lorentz_mask=self.dataset.get_lorentz_mask(), augmentation = self.augmentation_type)(input_layer)
         layer = self.normalizer(layer)
@@ -218,7 +223,7 @@ class RegressionModel:
         learning_rate = CosineDecay(
             initial_learning_rate = self.initial_learning_rate,
             decay_steps = self.n_epochs * self.dataset.train_events // self.batch_size,
-            alpha = 1e-4
+            alpha = 5e-4
         )
         # Compile the model
         self.model = Model(inputs=input_layer, outputs=output_layer)
@@ -227,6 +232,7 @@ class RegressionModel:
             loss=MeanSquaredError(),
             metrics=[MeanSquaredError(), MeanAbsolutePercentageError()]
         )
+        #print("Model built successfully within strategy scope.")
 
     def train_model(self):
         """
