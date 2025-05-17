@@ -27,7 +27,7 @@ class Dataset():
                     "jet_1_p4",
                     "dijet_p4",
                     "met_p4", 
-                    "n_jets","n_jets_30","n_jets_40","n_electrons","n_muons","n_taus", 
+                    "n_jets","n_jets_30","n_jets_40","n_electrons","n_muons","n_taus", "ditau_mmc_mlm_m"
                     ]
         
         default_target_variable = "truth_boson_p4"
@@ -249,15 +249,14 @@ class Dataset():
         plt.title("Input Distribution")
         plt.show()
 
-  
 class DatasetMass(Dataset):
     def __init__(self, **kwargs): 
         super().__init__(**kwargs)
 
-    def make_slices(self, n_slices=10):
-        bins = np.linspace(70.0, 130.0, num=n_slices+1)
+    def make_slices(self, n_slices=30):
+        bins = np.linspace(70.0, 180.0, num=n_slices+1)
         functions = [make_filter_slice(lb, ub) for lb, ub in zip(bins[:-1], bins[1:])]
-        self.slices = [self.slice_datasets[i].filter(functions[i]) for i in range(n_slices)]
+        self.slices = [self.train_dataset.filter(functions[i]) for i in range(n_slices)]
 
     def get_phi_mask(self):
         mask = []
@@ -278,22 +277,39 @@ class DatasetMass(Dataset):
                     mask.append(False)
         return mask
     
-    def augment_data_phi(self, n_slices=10):
-        #self.make_slices(n_slices)
-        phi_mask = tf.constant(self.get_phi_mask())
+    def augment_data(self, n_slices=30, cache_in_memory=True, cache_filename=None):
+        self.make_slices(n_slices)
+        #phi_mask = tf.constant(self.get_phi_mask())
 
-        @tf.function
-        def augment_phi(data, target):
-            angle = tf.random.uniform(shape=(tf.shape(data)[0],), minval=-np.pi, maxval=np.pi)
+        #@tf.function
+        #def augment_phi(data, target):
+        #    angle = tf.random.uniform(shape=(tf.shape(data)[0],), minval=-np.pi, maxval=np.pi)
 
-            data  = tf.where(phi_mask, data + angle, data)
-            data = tf.where(phi_mask, tf.math.atan2(tf.sin(data), tf.cos(data)), data)
+        #    data  = tf.where(phi_mask, data + angle, data)
+        #    data = tf.where(phi_mask, tf.math.atan2(tf.sin(data), tf.cos(data)), data)
             
-            return data, target
+        #    return data, target
+        
+        sampled_ds = tf.data.Dataset.sample_from_datasets([s.repeat() for s in self.slices], weights=[1.]*len(self.slices))
+        
+         # 2. Cache the sampled dataset
+        if cache_in_memory:
+            print("Caching sampled data in memory.")
+            cached_sampled_ds = sampled_ds.cache()
+        else:
+            if cache_filename is None:
+                cache_filename = "./data_cache/sampled_data_cache" # Default filename
+                os.makedirs(os.path.dirname(cache_filename), exist_ok=True)
+            print(f"Caching sampled data to disk: {cache_filename}")
+            cached_sampled_ds = sampled_ds.cache(cache_filename)
 
-        #new_dataset = tf.data.Dataset.sample_from_datasets([s.repeat() for s in self.slices], weights=[1.]*len(self.slices))
+        #augmented_ds = cached_sampled_ds.map(augment_phi, num_parallel_calls=tf.data.AUTOTUNE)
+        prefetched_ds = cached_sampled_ds.prefetch(tf.data.AUTOTUNE)
+        self.train_dataset = prefetched_ds   
+
+        
         #self.train_dataset  = new_dataset.map(augment_phi, num_parallel_calls=tf.data.AUTOTUNE).prefetch(tf.data.AUTOTUNE)
-        self.train_dataset = self.train_dataset.map(augment_phi,num_parallel_calls=tf.data.AUTOTUNE).prefetch(tf.data.AUTOTUNE)
+        #self.train_dataset = self.train_dataset.map(augment_phi,num_parallel_calls=tf.data.AUTOTUNE).prefetch(tf.data.AUTOTUNE)
 
     def get_lorentz_mask(self):
         mask = []
@@ -367,11 +383,8 @@ class DatasetMass(Dataset):
         self.train_dataset = self.train_dataset.map(augment_lorentz,num_parallel_calls=tf.data.AUTOTUNE).prefetch(tf.data.AUTOTUNE)
         
 
-    def load_data(self, file_name = "data", n_slices=10):
-        self.slice_datasets = [] 
-        for _ in range(n_slices):
-            super().load_data(file_name = "data")
-            self.slice_datasets.append(self.train_dataset)
+    def load_data(self, file_name = "data_mmc"):
+        super().load_data(file_name=file_name)
         
         ## add augmentation
         ## pick mass
@@ -383,47 +396,11 @@ class DatasetMass(Dataset):
         self.val_dataset = self.val_dataset.map(pick_mass)
         self.dev_dataset = self.dev_dataset.map(pick_mass)
 
-class DatasetPt(Dataset):
-    def __init__(self, **kwargs): 
-        super().__init__(**kwargs)
-
-    def get_phi_mask(self):
-        mask = []
-        for var in self.variables_higgs: 
-            #print(var)
-            if ('p4' in var) and (var != self.target_variable):
-                mask.append(False)  # pt
-                mask.append(False) # eta
-                mask.append(True) # phi
-                mask.append(False) # mass
-
-            elif (var == self.target_variable):
-                pass
-            else:
-                if 'phi' in var:
-                    mask.append(True)
-                else:
-                    mask.append(False)
-        return mask
-
-    def load_data(self):
-        super().load_data(file_name = "data")
-
-        ## add augmentation
-        
-        ## pick pt
-        @tf.function
-        def pick_pt(data, targets):
-            return data, targets[0]
-        
-        self.train_dataset = self.train_dataset.map(pick_pt)
-        self.val_dataset = self.val_dataset.map(pick_pt)
-        self.dev_dataset = self.dev_dataset.map(pick_pt)
 
 if __name__ == "__main__":
     dataset = DatasetMass()
     dataset.load_data(file_name = "data")
-    dataset.augment_data_phi()
+    dataset.augment_data()
 
     print(dataset.train_events)
     print(dataset.val_events)

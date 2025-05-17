@@ -1,5 +1,5 @@
 from ModelClass import RegressionModel
-from DatasetClass import DatasetPt, DatasetMass
+from DatasetClass import DatasetMass
 import logging
 import os
 import itertools
@@ -21,28 +21,27 @@ def main():
 
     logger.info(f"Loading data from: {patrik_data}")
 
-    dataset = DatasetMass(file_paths=patrik_data, file_name="data")
-    dataset.load_data()
+    dataset = DatasetMass()
+    dataset.load_data(file_name="data")
     logger.info("Data loaded successfully.")
-    dataset.augment_data_phi()
+    dataset.augment_data(n_slices = 25)
     logger.info("Data augmented successfully.")
 
     # === Grid search ===
     param_grid = {
-        'batch_size': [8192],
+        #'batch_size': [8192],
+        'batch_size': [64],
         'learning_rate': [1e-3],
-        'epochs': [100],
+        'epochs': [1],
         'n_layers': [7],
         'hidden_layer_size': [8192],
         'dropout_rate': [0.3],
-        'weight_decay': [0],
-        "n_normalizer_samples": [10000],
+        'weight_decay': [1e-4],
+        "n_normalizer_samples": [1000],
         "activation_function": ["relu"]
     }
 
     iterable = list(itertools.product(*param_grid.values()))
-    best_params = None
-    best_loss = float('inf')
 
     for i, params in enumerate(iterable):
         batch_size_val, learning_rate_val, epochs_val, n_layers_val, hidden_size_val, dropout_val, weight_decay_val, n_normalizer_samples_val, activation_function = params
@@ -71,8 +70,8 @@ def main():
         model.create_normalizer()
         model.build_model()
         model.train_model()
-        model.save(model_name = "PatrikNet_phi_augmentation.keras")
-        model.load(model_name = "PatrikNet_phi_augmentation.keras")
+        model.save(model_name = "PatrikNet_mmc_phi_flattened_nommc.keras")
+        model.load(model_name = "PatrikNet_mmc_phi_flattened_nommc.keras")
         model.plot_history()
 
         #final_loss = model.history.history['val_loss'][-1]

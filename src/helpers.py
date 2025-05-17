@@ -32,6 +32,7 @@ def pick_only_target(data, label):
     return label
 
 
+
 def extract_data(dataset):
     # Extract all elements from the tf.data.Dataset
     return [x.numpy() for x in dataset]

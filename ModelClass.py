@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 from DatasetClass import Dataset
-from tensorflow.keras.layers import Normalization, Input, Dense, BatchNormalization, Dropout, Activation
+from tensorflow.keras.layers import Normalization, Input, Dense, BatchNormalization, Dropout, Activation, Layer
 from tensorflow.keras.optimizers import AdamW
 from tensorflow.keras.optimizers.schedules import CosineDecay
 from tensorflow.keras.models import Model, load_model
@@ -15,12 +15,90 @@ import logging
 logger = logging.getLogger("training_logger")
 logger.setLevel(logging.INFO)
 
-# Ak ešte nie je nastavený handler (kvôli opakovanému importu), pridaj ho
 if not logger.handlers:
     os.makedirs("logs", exist_ok=True)
     file_handler = logging.FileHandler("logs/train.log")
     file_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
     logger.addHandler(file_handler)
+
+
+class Augmentation(Layer):
+    def __init__(self, phi_mask, lorentz_mask, augmentation, **kwargs):
+        super(Augmentation, self).__init__(**kwargs)
+
+        self.phi_mask = tf.constant(phi_mask, dtype=tf.bool)
+        self.lorentz_mask = tf.constant(lorentz_mask, dtype = tf.bool)
+        self.augmentation = augmentation
+
+        if self.augmentation == "lorentz":
+            self.lorentz_indices_original = tf.cast(tf.where(self.lorentz_mask), dtype=tf.int32)
+            self.n_lorentz_features = tf.shape(self.lorentz_indices_original)[0]
+            self.n_vectors_per_batch_item = self.n_lorentz_features // 4
+            self.scatter_indices_template = self.lorentz_indices_original# [n_vectors, 4]
+
+
+    def call(self, inputs, training=None):
+        if training is not True: 
+            return inputs
+        
+        if self.augmentation == "phi":
+            return self._augment_phi(inputs)
+        
+        elif self.augmentation == "lorentz":
+            return self._augment_lorentz(inputs)
+        else: 
+            raise ValueError(f"Unknown augmentation technique: {self.augmentation}")
+        
+    def _augment_phi(self, inputs):
+            angle = tf.random.uniform(shape=(tf.shape(inputs)[0], 1), minval=-np.pi, maxval=np.pi)
+            data  = tf.where(self.phi_mask, inputs + angle, inputs)
+            data = tf.where(self.phi_mask, tf.math.atan2(tf.sin(data), tf.cos(data)), data)
+
+            return data 
+
+    def _augment_lorentz(self, inputs):
+        batch_size = tf.shape(inputs)[0]
+        #total_features = tf.shape(inputs)[1]
+
+        beta = tf.random.uniform(shape = [batch_size, 1], minval=-0.98, maxval=0.98) # Shape ()
+        gamma = 1.0 / tf.sqrt(1.0 - beta**2) 
+
+        lorentz_components = tf.boolean_mask(inputs, self.lorentz_mask, axis=1)
+        lv_reshaped = tf.reshape(lorentz_components, [batch_size, self.n_vectors_per_batch_item, 4])
+        pt, eta, phi, E = tf.split(lv_reshaped, num_or_size_splits=4, axis=-1)
+  
+        pz = pt * tf.sinh(eta) 
+        E_prime = gamma * (E - beta * pz)
+        pz_prime = gamma * (pz - beta * E) 
+        
+        epsilon = 1e-8
+
+        eta_prime = tf.asinh(pz_prime / (pt + epsilon)) 
+        
+        update_values = tf.concat([pt, eta_prime, phi, E_prime], axis=-1)
+        boosted_lv_flat = tf.reshape(update_values, [-1])
+        batch_indices_flat = tf.repeat(tf.range(batch_size, dtype=tf.int32), self.n_lorentz_features)
+        lorentz_indices_flat = tf.tile(self.scatter_indices_template, [batch_size, 1])
+        scatter_indices = tf.stack([batch_indices_flat, tf.squeeze(lorentz_indices_flat, axis=-1)], axis=-1)
+
+        data = tf.tensor_scatter_nd_update(
+            inputs,
+            indices=scatter_indices,
+            updates=boosted_lv_flat
+        )
+        return data
+
+    
+    def get_config(self):
+        config = super().get_config()
+        # Store mask as list for serialization, convert back in from_config if needed
+        config.update({
+            "phi_mask": self.phi_mask.numpy().tolist(),
+            "lorentz_mask": self.lorentz_mask.numpy().tolist(),
+            "augmentation": self.augmentation,
+        })
+        return config
+
 
 class ResidualBlock(tf.keras.layers.Layer):
     def __init__(self, units, activation="relu", dropout_rate=0.2, use_bias=False, **kwargs):
@@ -57,6 +135,7 @@ class RegressionModel:
         self.model = None
         self.history = None
         self.outFolder = "model_checkpoint"
+        self.augmentation_type = kwargs.get("augmentation", "phi")
         """
         Model hyperparameters.
         """
@@ -122,8 +201,8 @@ class RegressionModel:
         """
         print("Building model...")
         input_layer = Input(shape=tuple(self.dataset.train_dataset.element_spec[0].shape.as_list()))
-
-        layer = self.normalizer(input_layer)
+        layer = Augmentation(phi_mask=self.dataset.get_phi_mask(), lorentz_mask=self.dataset.get_lorentz_mask(), augmentation = self.augmentation_type)(input_layer)
+        layer = self.normalizer(layer)
 
         for i in range(self.n_layers):
             layer = ResidualBlock(
@@ -139,7 +218,7 @@ class RegressionModel:
         learning_rate = CosineDecay(
             initial_learning_rate = self.initial_learning_rate,
             decay_steps = self.n_epochs * self.dataset.train_events // self.batch_size,
-            alpha = 0.0
+            alpha = 1e-4
         )
         # Compile the model
         self.model = Model(inputs=input_layer, outputs=output_layer)
@@ -160,16 +239,16 @@ class RegressionModel:
         checkpointFolder = '{}/checkpoints/checkpoints/'.format(self.outFolder)
         os.makedirs(checkpointFolder, exist_ok=True)
 
-        #checkpoint = tf.keras.callbacks.BackupAndRestore(backup_dir=checkpointFolder, delete_checkpoint=False, save_freq=100)
+        checkpoint = tf.keras.callbacks.BackupAndRestore(backup_dir=checkpointFolder, delete_checkpoint=False, save_freq=10000)
         early_stop = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=False, verbose=1, mode='min')
         tensorboard = tf.keras.callbacks.TensorBoard(log_dir='{}/logs'.format(self.outFolder), histogram_freq=10)
-        callbacks = [EpochLogger(logger), early_stop, tensorboard]
+        callbacks = [EpochLogger(logger), early_stop, tensorboard, checkpoint]
         
         history = self.model.fit(
             self.train_batch,
             epochs=self.n_epochs,
             validation_data=self.dev_batch,
-            #steps_per_epoch=self.dataset.train_events // self.batch_size,
+            steps_per_epoch=self.dataset.train_events // self.batch_size,
             callbacks=callbacks
         )
         self.history = history
