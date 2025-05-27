@@ -44,7 +44,7 @@ class Augmentation(Layer):
             self.scatter_indices_template = self.lorentz_indices_original# [n_vectors, 4]
 
 
-    def call(self, inputs, training=None):
+    def call(self, inputs, training=False):
         if training is not True: 
             return inputs
         
@@ -94,7 +94,6 @@ class Augmentation(Layer):
             updates=boosted_lv_flat
         )
         return data
-
     
     def get_config(self):
         config = super().get_config()
@@ -105,7 +104,6 @@ class Augmentation(Layer):
             "augmentation": self.augmentation,
         })
         return config
-
 
 class ResidualBlock(tf.keras.layers.Layer):
     def __init__(self, units, activation="relu", dropout_rate=0.2, use_bias=False, **kwargs):
@@ -123,6 +121,7 @@ class ResidualBlock(tf.keras.layers.Layer):
         self.dropout = Dropout(self.dropout_rate)
         self.dense2 = Dense(input_shape[-1], use_bias=self.use_bias)
         self.bn2 = BatchNormalization()
+        self.activation_layer2 = Activation(self.activation)
 
     def call(self, inputs):
         # Main path
@@ -132,6 +131,7 @@ class ResidualBlock(tf.keras.layers.Layer):
         x = self.dropout(x)
         x = self.dense2(x)
         x = self.bn2(x)
+        x = self.activation_layer2(x)
         
         return x + inputs    
 
@@ -251,7 +251,7 @@ class RegressionModel:
         checkpointFolder = '{}/checkpoints/checkpoints/'.format(self.outFolder)
         os.makedirs(checkpointFolder, exist_ok=True)
 
-        checkpoint = tf.keras.callbacks.BackupAndRestore(backup_dir=checkpointFolder, delete_checkpoint=False, save_freq=10000)
+        checkpoint = tf.keras.callbacks.BackupAndRestore(backup_dir=checkpointFolder, delete_checkpoint=False, save_freq=1000)
         early_stop = tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=False, verbose=1, mode='min')
         tensorboard = tf.keras.callbacks.TensorBoard(log_dir='{}/logs'.format(self.outFolder), histogram_freq=10)
         callbacks = [EpochLogger(logger), early_stop, tensorboard, checkpoint]

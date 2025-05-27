@@ -254,7 +254,7 @@ class DatasetMass(Dataset):
         super().__init__(**kwargs)
 
     def make_slices(self, n_slices=30):
-        bins = np.linspace(70.0, 180.0, num=n_slices+1)
+        bins = np.linspace(20, 180.0, num=n_slices+1)
         functions = [make_filter_slice(lb, ub) for lb, ub in zip(bins[:-1], bins[1:])]
         self.slices = [self.train_dataset.filter(functions[i]) for i in range(n_slices)]
 

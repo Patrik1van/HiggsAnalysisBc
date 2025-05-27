@@ -19,12 +19,13 @@ def main():
     erik_data = "/scratch/ucjf-atlas/htautau/SM_Htautau_R22/V02_skim_mva_01/*/*/*/*/*H125*.root"
     patrik_data = "/scratch/ucjf-atlas/htautau/SM_Htautau_R22/V02_skim_mva_01/*/*/*/*/*Ztt*.root"
 
+    model_name = "PatrikNet_phi_flattened_30s_0_200.keras"
     logger.info(f"Loading data from: {patrik_data}")
 
     dataset = DatasetMass()
     dataset.load_data(file_name="data_mmc")
     logger.info("Data loaded successfully.")
-    dataset.augment_data(n_slices = 20)
+    dataset.augment_data(n_slices = 30)
     logger.info("Data augmented successfully.")
 
     # === Grid search ===
@@ -32,7 +33,8 @@ def main():
         #'batch_size': [8192],
         'batch_size': [64],
         'learning_rate': [1e-3],
-        'epochs': [1],
+        #'epochs': [1],
+        "epochs": [1],
         'n_layers': [7],
         'hidden_layer_size': [8192],
         'dropout_rate': [0.3],
@@ -65,22 +67,22 @@ def main():
             weight_decay=weight_decay_val,
             n_normalizer_samples = n_normalizer_samples_val,
             augmentation_type = "lorentz"
-
         )
 
         model.prepare_dataset()
         model.create_normalizer()
         model.build_model()
         model.train_model()
-        model.save(model_name = "PatrikNet_mmc_phi_flattened_lorentz.keras")
-        model.load(model_name = "PatrikNet_mmc_phi_flattened_lorentz.keras")
+        model.save(model_name = model_name)
+        model.load(model_name = model_name)
         model.plot_history()
 
         #final_loss = model.history.history['val_loss'][-1]
         #logger.info(f"Final training loss: {final_loss:.6f}")
         
     # Finálne echo do job.out
-    print("Tréning dokončený detailné logy nájdeš v logs/train.log")
+    logger.info(f"Model uložený ako {model_name}")
+
 
 if __name__ == "__main__":
     main()
