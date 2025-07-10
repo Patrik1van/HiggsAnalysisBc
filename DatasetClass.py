@@ -27,7 +27,7 @@ class Dataset():
                     "jet_1_p4",
                     "dijet_p4",
                     "met_p4", 
-                    "n_jets","n_jets_30","n_jets_40","n_electrons","n_muons","n_taus", "ditau_mmc_mlm_m"
+                    "n_jets","n_jets_30","n_jets_40","n_electrons","n_muons","n_taus"
                     ]
         
         default_target_variable = "truth_boson_p4"
@@ -210,7 +210,7 @@ class Dataset():
         self.train_events = train_events
         self.dev_events = dev_events
     
-    def save_data(self, file_name= "data"):  
+    def save_data(self, file_name= "data_test"):  
         print("saving dataset")
         os.makedirs(f"{file_name}", exist_ok=True)  # Ensure 'data' directory exists
         val_dataset = self.val_dataset
@@ -228,7 +228,7 @@ class Dataset():
             f.write(f"{self.dev_events}\n")
         print(f"Dataset Successfully saved")
 
-    def load_data(self, file_name = "data"):
+    def load_data(self, file_name = "data_test"):
         self.train_dataset = tf.data.Dataset.load(f"{file_name}/train_dataset")
         self.val_dataset = tf.data.Dataset.load(f"{file_name}/val_dataset")
         self.dev_dataset = tf.data.Dataset.load(f"{file_name}/dev_dataset")
@@ -254,7 +254,7 @@ class DatasetMass(Dataset):
         super().__init__(**kwargs)
 
     def make_slices(self, n_slices=30):
-        bins = np.linspace(20, 180.0, num=n_slices+1)
+        bins = np.linspace(20, 200.0, num=n_slices+1)
         functions = [make_filter_slice(lb, ub) for lb, ub in zip(bins[:-1], bins[1:])]
         self.slices = [self.train_dataset.filter(functions[i]) for i in range(n_slices)]
 

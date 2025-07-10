@@ -212,8 +212,8 @@ class RegressionModel:
         print("Building model...")
         #with self.strategy.scope():
         input_layer = Input(shape=tuple(self.dataset.train_dataset.element_spec[0].shape.as_list()))
-        layer = Augmentation(phi_mask=self.dataset.get_phi_mask(), lorentz_mask=self.dataset.get_lorentz_mask(), augmentation = self.augmentation_type)(input_layer)
-        layer = self.normalizer(layer)
+        #layer = Augmentation(phi_mask=self.dataset.get_phi_mask(), lorentz_mask=self.dataset.get_lorentz_mask(), augmentation = self.augmentation_type)(input_layer)
+        layer = self.normalizer(input_layer)
 
         for i in range(self.n_layers):
             layer = ResidualBlock(
@@ -260,7 +260,7 @@ class RegressionModel:
             self.train_batch,
             epochs=self.n_epochs,
             validation_data=self.dev_batch,
-            steps_per_epoch=self.dataset.train_events // self.batch_size,
+            steps_per_epoch=self.n_epochs * self.dataset.train_events // self.batch_size,
             callbacks=callbacks
         )
         self.history = history

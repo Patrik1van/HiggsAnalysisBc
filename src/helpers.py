@@ -33,7 +33,11 @@ def pick_only_target(data, label):
 
 def extract_data(dataset):
     # Extract all elements from the tf.data.Dataset
-    return [x.numpy() for x in dataset]
+    return [x for x in dataset.as_numpy_iterator()]
+
+@tf.function
+def pick_only_mmc(data, label):
+    return data[-1]
 
 def make_filter_slice(lower, upper):
     @tf.function
@@ -41,12 +45,3 @@ def make_filter_slice(lower, upper):
         return tf.logical_and(target >= lower, target < upper)
     return _filter_slice
 
-
-if __name__ == "__main___":
-    # Generate bin edges from 70 to 130 (inclusive) for 6 bins: [70,80), [80,90), ..., [120,130)
-    bins = np.linspace(70.0, 130.0, num=9)
-    #filter_functions = [make_filter_slice(lb, ub) for lb, ub in zip(bins[:-1], bins[1:])]
-    
-    #print(len(filter_functions))
-    # Apply each filter function to the training dataset
-    #slices = [dataset.train_dataset.filter(fn) for fn in filter_functions]

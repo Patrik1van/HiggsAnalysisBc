@@ -19,27 +19,27 @@ def main():
     erik_data = "/scratch/ucjf-atlas/htautau/SM_Htautau_R22/V02_skim_mva_01/*/*/*/*/*H125*.root"
     patrik_data = "/scratch/ucjf-atlas/htautau/SM_Htautau_R22/V02_skim_mva_01/*/*/*/*/*Ztt*.root"
 
-    model_name = "PatrikNet_phi_flattened_30s_0_200.keras"
+    model_name = "PatrikNet_without_augmentation.keras"
     logger.info(f"Loading data from: {patrik_data}")
 
     dataset = DatasetMass()
     dataset.load_data(file_name="data_mmc")
     logger.info("Data loaded successfully.")
-    dataset.augment_data(n_slices = 30)
-    logger.info("Data augmented successfully.")
+    #dataset.augment_data(n_slices = 17)
+    #logger.info("Data augmented successfully.")
 
     # === Grid search ===
     param_grid = {
         #'batch_size': [8192],
-        'batch_size': [64],
-        'learning_rate': [1e-3],
+        'batch_size': [1024],
+        'learning_rate': [2e-4],
         #'epochs': [1],
-        "epochs": [1],
+        "epochs": [5],
         'n_layers': [7],
         'hidden_layer_size': [8192],
         'dropout_rate': [0.3],
         'weight_decay': [1e-4],
-        "n_normalizer_samples": [1000],
+        "n_normalizer_samples": [10000],
         "activation_function": ["relu"]
     }
 
@@ -66,7 +66,6 @@ def main():
             dropout_rate=dropout_val,
             weight_decay=weight_decay_val,
             n_normalizer_samples = n_normalizer_samples_val,
-            augmentation_type = "lorentz"
         )
 
         model.prepare_dataset()
