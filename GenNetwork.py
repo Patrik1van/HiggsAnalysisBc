@@ -4,7 +4,6 @@ from tensorflow.keras.layers import Input, Dense, BatchNormalization, LeakyReLU,
 from tensorflow.keras.optimizers import AdamW
 
 
-
 class Generator:
     """
     The Generator model for the GAN.
@@ -17,6 +16,7 @@ class Generator:
         self.n_units = n_units
         self.optimizer = AdamW(learning_rate=kwargs.pop('learning_rate', 0.0001), 
                                weight_decay=kwargs.pop('weight_decay', 1e-4))
+        self.num_layers = kwargs.pop('n_layers', 7)
         
         self.model = self._build_model()
 
@@ -25,15 +25,12 @@ class Generator:
         noise_input = Input(shape=(self.latent_dim,))
         
         # Start with a dense layer
-        x = Dense(self.n_units, use_bias=False)(noise_input)
-        x = BatchNormalization()(x)
-        x = LeakyReLU(alpha=0.2)(x)
+        x = noise_input
+        for _ in range(self.num_layers):
+            x = Dense(self.n_units, use_bias=False)(x)
+            x = BatchNormalization()(x)
+            x = LeakyReLU(negative_slope=0.2)(x)
 
-        # Add more layers
-        x = Dense(self.n_units * 2, use_bias=False)(x)
-        x = BatchNormalization()(x)
-        x = LeakyReLU(alpha=0.2)(x)
-        
         # Output layer
         x = Dense(self.output_shape[0], activation='tanh')(x) # Tanh is common for GANs
         output_tensor = Reshape(self.output_shape)(x)
@@ -56,8 +53,9 @@ class Discriminator:
     def __init__(self, input_shape=(36, 1), n_units=128, **kwargs):
         self.input_shape = input_shape
         self.n_units = n_units
-        self.optimizer = AdamW(learning_rate=kwargs.pop('learning_rate', 0.0001), beta_1=0.5, beta_2=0.9)
-
+        self.optimizer = AdamW(learning_rate=kwargs.pop('learning_rate', 0.0001))
+        self.num_layers = kwargs.pop('n_layers', 7)
+        self.dropout = kwargs.pop('dropout', 0.3)
         self.model = self._build_model()
 
     def _build_model(self):
@@ -66,15 +64,12 @@ class Discriminator:
         
         x = Flatten()(data_input)
         
-        x = Dense(self.n_units * 2)(x)
-        x = LeakyReLU(alpha=0.2)(x)
-        x = Dropout(0.3)(x)
-        
-        x = Dense(self.n_units)(x)
-        x = LeakyReLU(alpha=0.2)(x)
-        x = Dropout(0.3)(x)
-       
-        output_prob = Dense(1, activation='sigmoid')(x)
+        for _ in range(self.num_layers):
+            x = Dense(self.n_units)(x)
+            x = LeakyReLU(negative_slope=0.2)(x)
+            x = Dropout(self.dropout)(x)
+
+        output_prob = Dense(1)(x)
         
         model = Model(data_input, output_prob, name="discriminator")
         print("\n--- Discriminator Architecture ---")
@@ -85,16 +80,21 @@ class Discriminator:
         """Makes the class instance callable."""
         return self.model(inputs)
     
-class GAN:
+class GAN(tf.keras.Model):
     """
     The GAN model that combines the Generator and Discriminator.
     It takes a random noise vector and outputs a probability of the generated data being real.
     """
     def __init__(self, generator, discriminator, latent_dim=100, **kwargs):
+        super().__init__(**kwargs)
         self.generator = generator
         self.discriminator = discriminator
         self.latent_dim = latent_dim
         self.gp_weight = kwargs.pop('gp_weight', 10.0)  # Gradient penalty weight
+
+        self.generator_optimizer = None
+        self.discriminator_optimizer = None
+
         self.generator_loss_metric = tf.keras.metrics.Mean(name='generator_loss')
         self.discriminator_loss_metric = tf.keras.metrics.Mean(name='discriminator_loss')
 
@@ -102,8 +102,14 @@ class GAN:
     def metrics(self):
         return [self.generator_loss_metric, self.discriminator_loss_metric]
     
-    def compile(self):
+    def compile(self, g_optimizer, d_optimizer):
+        """
+        Configures the model for training.
+        We assign the optimizers passed here to the model.
+        """
         super().compile()
+        self.generator_optimizer = g_optimizer
+        self.discriminator_optimizer = d_optimizer
 
     def gradient_penalty(self, batch_size, real_data, fake_data):
         """Calculates the gradient penalty."""
@@ -125,29 +131,30 @@ class GAN:
         batch_size = tf.shape(real_data)[0]
         
         # Generate random noise
+
+        for _ in range(5):
+            noise = tf.random.normal([batch_size, self.latent_dim])
+
+            with tf.GradientTape() as tape:
+                fake_data = self.generator(noise)
+                real_output = self.discriminator(real_data)
+                fake_output = self.discriminator(fake_data)
+
+                discriminator_loss = tf.reduce_mean(fake_output) - tf.reduce_mean(real_output)
+                gp = self.gradient_penalty(batch_size, real_data, fake_data)
+                discriminator_loss += gp * self.gp_weight
+            
+            discriminator_gradients = tape.gradient(discriminator_loss, self.discriminator.model.trainable_variables)
+            self.discriminator_optimizer.apply_gradients(zip(discriminator_gradients, self.discriminator.model.trainable_variables))
+
         noise = tf.random.normal([batch_size, self.latent_dim])
-        
-        #train the discriminator
-
-        with tf.GradientTape() as tape:
-            fake_data = self.generator(noise)
-            real_output = self.discriminator(real_data)
-            fake_output = self.discriminator(fake_data)
-
-            discriminator_loss = tf.reduce_mean(fake_output) - tf.reduce_mean(real_output)
-            gp = self.gradient_penalty(batch_size, real_data, fake_data)
-            discriminator_loss += gp * self.gp_weight
-        
-        discriminator_gradients = tape.gradient(discriminator_loss, self.discriminator.model.trainable_variables)
-        self.discriminator.optimizer.apply_gradients(zip(discriminator_gradients, self.discriminator.model.trainable_variables))
-
         with tf.GradientTape() as tape:
             generated_data = self.generator(noise)
             gen_output = self.discriminator(generated_data)
             generator_loss = -tf.reduce_mean(gen_output)
         
         generator_gradients = tape.gradient(generator_loss, self.generator.model.trainable_variables)
-        self.generator.optimizer.apply_gradients(zip(generator_gradients, self.generator.model.trainable_variables))
+        self.generator_optimizer.apply_gradients(zip(generator_gradients, self.generator.model.trainable_variables))
 
         self.generator_loss_metric.update_state(generator_loss)
         self.discriminator_loss_metric.update_state(discriminator_loss) 
